@@ -31,16 +31,16 @@ Run this project like this:
 git clone https://github.com/felixdrp/node-addon-example-async-work-thread-safe-function-zig.git
 
 # 2. Download Node.js header files
-npm install
+bun install
 
 # 3. Compile the Zig module and produce `dist/lib.node`
-npm run build
+bun run build
 
 # 4. Run example. It will call the `foo()` function from Zig module.
-npm run exec
+bun run exec
 
 # Bonus: Debug mode (build dev) 🐛
-npm run bdev
+bun run bdev
 ```
 
 ## License and acknowledgements
