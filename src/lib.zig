@@ -20,7 +20,7 @@ const CALLS_MAX_NUMBER: usize = 10;
 const AddonData = packed struct {
     work: c.napi_async_work,
     tsfn: c.napi_threadsafe_function,
-    status: usize
+    status: usize,
 };
 
 // This function is responsible for converting data coming in from the worker
@@ -31,15 +31,15 @@ fn CallJs(
     js_cb: c.napi_value,
     context: ?*anyopaque,
     // data = the_prime
-    data: ?*anyopaque 
+    data: ?*anyopaque,
 ) callconv(.C) void {
     // This parameter is not used.
     _ = context;
     var status: c.napi_status = undefined;
 
     // Retrieve the prime from the item created by the worker thread.
-    var prime_container = @as(*[]u32, @alignCast(@ptrCast(data))).*;
-    var the_prime = prime_container[0];
+    const prime_container = @as(*[]u32, @alignCast(@ptrCast(data))).*;
+    const the_prime = prime_container[0];
 
     // env and js_cb may both be NULL if Node.js is in its cleanup phase, and
     // items are left over from earlier thread-safe calls from the worker thread.
@@ -58,12 +58,13 @@ fn CallJs(
 
         // Call the JavaScript function and pass it the prime that the secondary
         // thread found.
-        status = c.napi_call_function(env,
-                                js_undefined,
-                                js_cb,
-                                1,
-                                &js_the_prime,
-                                null
+        status = c.napi_call_function(
+            env,
+            js_undefined,
+            js_cb,
+            1,
+            &js_the_prime,
+            null,
         );
     }
 
@@ -75,21 +76,21 @@ fn CallJs(
 // environment except through the thread-safe function.
 fn ExecuteWork(
     env: c.napi_env,
-    data: ?*anyopaque
+    data: ?*anyopaque,
 ) callconv(.C) void {
     _ = env;
-    var addon_data: AddonData = @as(*AddonData, @alignCast(@ptrCast(data))).*;
+    const addon_data: AddonData = @as(*AddonData, @alignCast(@ptrCast(data))).*;
 
-    var idx_outer:u32 = 2;
-    var idx_inner:u32 = undefined;
-    var prime_count:u32 = 0;
+    var idx_outer: u32 = 2;
+    var idx_inner: u32 = undefined;
+    var prime_count: u32 = 0;
     var status: c.napi_status = undefined;
 
     // We bracket the use of the thread-safe function by this thread by a call to
     // napi_acquire_threadsafe_function() here, and by a call to
     // napi_release_threadsafe_function() immediately prior to thread exit.
     status = c.napi_acquire_threadsafe_function(addon_data.tsfn);
-    
+
     while (prime_count < PRIME_COUNT) : (idx_outer += 1) {
         idx_inner = 2;
         while (idx_inner < idx_outer) : (idx_inner += 1) {
@@ -112,7 +113,7 @@ fn ExecuteWork(
             // *the_prime = idx_outer;
             var the_prime = std.heap.raw_c_allocator.alloc(@TypeOf(idx_outer), 1) catch |err| { // <-- capture err here
                 std.debug.print("Oops! {}\n", .{err});
-                return ;
+                return;
             };
             the_prime[0] = idx_outer;
 
@@ -121,22 +122,21 @@ fn ExecuteWork(
             status = c.napi_call_threadsafe_function(
                 addon_data.tsfn,
                 @ptrCast(&the_prime),
-                c.napi_tsfn_nonblocking
+                c.napi_tsfn_nonblocking,
                 // c.napi_tsfn_blocking
             );
         }
     }
 
     // Indicate that this thread will make no further use of the thread-safe function.
-    status = c.napi_release_threadsafe_function(addon_data.tsfn,
-                                            c.napi_tsfn_release);
+    status = c.napi_release_threadsafe_function(addon_data.tsfn, c.napi_tsfn_release);
 }
 
 // This function runs on the main thread after `ExecuteWork` exits.
 fn WorkComplete(
     env: c.napi_env,
     status: c.napi_status,
-    data: ?*anyopaque
+    data: ?*anyopaque,
 ) callconv(.C) void {
     _ = status;
     var status_local: c.napi_status = undefined;
@@ -144,8 +144,7 @@ fn WorkComplete(
     // Clean up the thread-safe function and the work item associated with this
     // run.
 
-    status_local = c.napi_release_threadsafe_function(addon_data.tsfn,
-                                                    c.napi_tsfn_release);
+    status_local = c.napi_release_threadsafe_function(addon_data.tsfn, c.napi_tsfn_release);
     status_local = c.napi_delete_async_work(env, addon_data.work);
 
     // Set both values to NULL so JavaScript can order a new run of the thread.
@@ -156,7 +155,7 @@ fn WorkComplete(
 
 fn StartThread(env: c.napi_env, info: c.napi_callback_info) callconv(.C) c.napi_value {
     var argc: usize = 1;
-    var argv: [1]c.napi_value = .{};
+    var argv: [1]c.napi_value = undefined;
     var js_cb: c.napi_value = undefined;
     var work_name: c.napi_value = undefined;
     var global: c.napi_value = undefined;
@@ -177,7 +176,7 @@ fn StartThread(env: c.napi_env, info: c.napi_callback_info) callconv(.C) c.napi_
         null,
         // extra data pased when StartThread is called.
         // info with the list of running works
-        @ptrCast(&addon_data_list)
+        @ptrCast(&addon_data_list),
     );
     js_cb = argv[0];
 
@@ -192,7 +191,7 @@ fn StartThread(env: c.napi_env, info: c.napi_callback_info) callconv(.C) c.napi_
             addon_data.status = 1;
 
             // addon thread space found
-            addon_data_status = 1; 
+            addon_data_status = 1;
             break;
         }
     }
@@ -202,7 +201,8 @@ fn StartThread(env: c.napi_env, info: c.napi_callback_info) callconv(.C) c.napi_
             env,
             "No mas espacio para workers!!!!",
             c.NAPI_AUTO_LENGTH,
-            &work_name);
+            &work_name,
+        );
         return work_name;
     }
 
@@ -220,7 +220,8 @@ fn StartThread(env: c.napi_env, info: c.napi_callback_info) callconv(.C) c.napi_
         env,
         "Node-API Thread-safe Call from Async Work Item " ++ [1]u8{@intCast(0x30 + work_num)},
         c.NAPI_AUTO_LENGTH,
-        &work_name);
+        &work_name,
+    );
 
     // Convert the callback retrieved from JavaScript into a thread-safe function
     // which we can call from a worker thread.
@@ -237,17 +238,20 @@ fn StartThread(env: c.napi_env, info: c.napi_callback_info) callconv(.C) c.napi_
         // https://stackoverflow.com/questions/58241265/make-node-js-exit-regardless-of-a-native-module-async-call-pending
         null,
         &CallJs,
-        &addon_data.tsfn);
+        &addon_data.tsfn,
+    );
 
     // Create an async work item, passing in the addon data, which will give the
     // worker thread access to the above-created thread-safe function.
-    status = c.napi_create_async_work(env,
-                                    null,
-                                    work_name,
-                                    ExecuteWork,
-                                    WorkComplete,
-                                    addon_data,
-                                    &addon_data.work);
+    status = c.napi_create_async_work(
+        env,
+        null,
+        work_name,
+        ExecuteWork,
+        WorkComplete,
+        addon_data,
+        &addon_data.work,
+    );
 
     // Queue the work item for execution.
     status = c.napi_queue_async_work(env, addon_data.work);
@@ -260,11 +264,11 @@ fn StartThread(env: c.napi_env, info: c.napi_callback_info) callconv(.C) c.napi_
 fn addon_getting_unloaded(
     env: c.napi_env,
     data: ?*anyopaque,
-    hint: ?*anyopaque
+    hint: ?*anyopaque,
 ) callconv(.C) void {
     _ = hint;
     _ = env;
-    var addon_data_list = @as(*[CALLS_MAX_NUMBER]AddonData, @alignCast(@ptrCast(data))) ;
+    const addon_data_list = @as(*[CALLS_MAX_NUMBER]AddonData, @alignCast(@ptrCast(data)));
 
     for (addon_data_list) |addon_data| {
         if (addon_data.status == 0) {
@@ -279,16 +283,17 @@ export fn napi_register_module_v1(env: c.napi_env, exports: c.napi_value) c.napi
     var result: c.napi_value = undefined;
 
     // Define addon-level data associated with this instance of the addon.
-    var addon_data_list = std.heap.raw_c_allocator.alloc(
+    const addon_data_list = std.heap.raw_c_allocator.alloc(
         AddonData,
-        CALLS_MAX_NUMBER
+        CALLS_MAX_NUMBER,
     ) catch |err| { // <-- capture err here
         std.debug.print("Oops! {}\n", .{err});
         status = c.napi_create_string_utf8(
             env,
             "Error allocating memory",
             c.NAPI_AUTO_LENGTH,
-            &result);
+            &result,
+        );
         return result;
     };
 
@@ -306,7 +311,7 @@ export fn napi_register_module_v1(env: c.napi_env, exports: c.napi_value) c.napi
         .value = null,
         .attributes = c.napi_default,
         // mandar la lista de trabajos
-        .data = @ptrCast(addon_data_list.ptr)
+        .data = @ptrCast(addon_data_list.ptr),
     };
 
     // Decorate exports with the above-defined properties.
@@ -320,7 +325,8 @@ export fn napi_register_module_v1(env: c.napi_env, exports: c.napi_value) c.napi
         @ptrCast(addon_data_list.ptr),
         addon_getting_unloaded,
         null,
-        null);
+        null,
+    );
 
     return exports;
 }
